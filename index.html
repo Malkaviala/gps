@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced GPS Tracking Dashboard</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --secondary: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1f2937;
+            --light: #f3f4f6;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            position: relative;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(45deg, #60a5fa, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .map-container {
+            grid-column: span 8;
+            height: 600px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            border-radius: 15px;
+        }
+
+        .stats-container {
+            grid-column: span 4;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1.5rem;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transform: translateX(-100%);
+            transition: 0.5s;
+        }
+
+        .stat-card:hover::before {
+            transform: translateX(100%);
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+            color: #fff;
+        }
+
+        .charts-container {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+        }
+
+        .chart-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1.5rem;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            height: 300px;
+        }
+
+        .address-card {
+            grid-column: 1 / -1;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1.5rem;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .error-message {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--danger);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            display: none;
+            animation: slideIn 0.3s ease;
+            z-index: 1000;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .map-container, .stats-container {
+                grid-column: 1 / -1;
+            }
+
+            .map-container {
+                height: 400px;
+            }
+
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Onyx Trucking GPS Tracking Dashboard</h1>
+            <p>Real-time location tracking and analytics</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="map-container">
+                <div id="map"></div>
+                <div class="loading"></div>
+            </div>
+            
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <i class="fas fa-location-dot"></i>
+                        Coordinates
+                    </div>
+                    <div class="stat-value">
+                        <div id="latitude">--.-°N</div>
+                        <div id="longitude">--.-°E</div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <i class="fas fa-mountain"></i>
+                        Altitude
+                    </div>
+                    <div class="stat-value" id="altitude">--- m</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <i class="fas fa-gauge-high"></i>
+                        Speed
+                    </div>
+                    <div class="stat-value" id="speed">--- mph</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <i class="fas fa-clock"></i>
+                        Last Update
+                    </div>
+                    <div class="stat-value" id="timestamp">---</div>
+                </div>
+            </div>
+
+            <div class="address-card">
+                <i class="fas fa-map-marker-alt fa-2x"></i>
+                <div>
+                    <div class="stat-label">Current Location</div>
+                    <div class="stat-value" id="address">Fetching location...</div>
+                </div>
+            </div>
+
+            <div class="charts-container">
+                <div class="chart-card">
+                    <canvas id="speedChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <canvas id="altitudeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="error-message" class="error-message"></div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCsd6sSP2wwOwP5s_4_TbrTdzaXkU66e4g",
+            authDomain: "raspberrygps-36044.firebaseapp.com",
+            databaseURL: "https://raspberrygps-36044-default-rtdb.firebaseio.com",
+            projectId: "raspberrygps-36044",
+            storageBucket: "raspberrygps-36044.appspot.com",
+            messagingSenderId: "858712924772",
+            appId: "G-08YW1WSTQJ"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        let map, marker;
+        let speedData = [], altitudeData = [];
+        let speedChart, altitudeChart;
+
+        function initCharts() {
+            const chartConfig = {
+                type: 'line',
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 750,
+                        easing: 'easeInOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#fff'
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    }
+                }
+            };
+
+            speedChart = new Chart(
+                document.getElementById('speedChart'),
+                {
+                    ...chartConfig,
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Speed (mph)',
+                            data: [],
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59,130,246,0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    }
+                }
+            );
+
+            altitudeChart = new Chart(
+                document.getElementById('altitudeChart'),
+                {
+                    ...chartConfig,
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Altitude (m)',
+                            data: [],
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16,185,129,0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    }
+                }
+            );
+        }
+
+        function initMap() {
+            try {
+                const mapStyle = [
+                    {
+                        "elementType": "geometry",
+                        "stylers": [{"color": "#242f3e"}]
+                    },
+                    {
+                        "elementType": "labels.text.fill",
+                        "stylers": [{"color": "#746855"}]
+                    },
+                    {
+                        "elementType": "labels.text.stroke",
+                        "stylers": [{"color": "#242f3e"}]
+                    },
+                    {
+                        "featureType": "water",
+                        "elementType": "geometry",
+                        "stylers": [{"color": "#17263c"}]
+                    }
+                ];
+
+                map = new google.maps.Map(document.getElementById("map"), {
+                    center: { lat: 0, lng: 0 },
+                    zoom: 15,
+                    styles: mapStyle,
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    mapTypeControl: true
+                });
+
+                document.querySelector('.loading').style.display = 'none';
+
+                const gpsLocationRef = database.ref('gps_location');
+                gpsLocationRef.on('value',
+                    (snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            updateMap(data);
+                            updateData(data);
+                            updateCharts(data);
+                        }
+                    },
+                    (error) => showError('Database error: ' + error.message)
+                );
+
+                initCharts();
+            } catch (error) {
+                showError('Map initialization error: ' + error.message);
+            }
+        }
+
+        function updateMap(data) {
+            try {
+                const position = {
+                    lat: parseFloat(data.latitude),
+                    lng: parseFloat(data.longitude),
+                };
+
+                if (isNaN(position.lat) || isNaN(position.lng)) {
+                    throw new Error('Invalid coordinates received');
+                }
+
+                if (!marker) {
+                    marker = new google.maps.Marker({
+                        position: position,
+                        map: map,
+                        title: "Current Location",
+                        animation: google.maps.Animation.DROP,
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 10,
+                            fillColor: "#3b82f6",
+                            fillOpacity: 0.8,
+                            strokeColor: "#fff",
+                            strokeWeight: 2,
+                        }
+                    });
+                } else {
+                    marker.setPosition(position);
+                }
+
+                map.panTo(position);
+                fetchAddress(position);
+            } catch (error) {
+                showError('Error updating map: ' + error.message);
+            }
+        }
+
+        
+        
+
+        function fetchAddress(position) {
+            const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${position.lat},${position.lng}&key=AIzaSyASI0J9rev9-NmWnNmSV8gqG_uOOR1-19Y`;
+
+            fetch(geocodingUrl)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === "OK" && data.results.length > 0) {
+                        const address = data.results[0].formatted_address;
+                        document.getElementById('address').textContent = address;
+                        marker.setTitle(address);
+                    } else {
+                        document.getElementById('address').textContent = "Unable to fetch address";
+                    }
+                })
+                .catch(error => {
+                    showError('Error fetching address: ' + error.message);
+                    document.getElementById('address').textContent = "Error fetching address";
+                });
+        }
+
+        function updateData(data) {
+            try {
+                // Format latitude with N/S hemisphere
+                const latValue = Math.abs(data.latitude).toFixed(6);
+                const latDir = data.latitude >= 0 ? 'N' : 'S';
+                document.getElementById('latitude').textContent = `${latValue}° ${latDir}`;
+
+                // Format longitude with E/W hemisphere
+                const lonValue = Math.abs(data.longitude).toFixed(6);
+                const lonDir = data.longitude >= 0 ? 'E' : 'W';
+                document.getElementById('longitude').textContent = `${lonValue}° ${lonDir}`;
+
+                // Format altitude with unit
+                document.getElementById('altitude').textContent = 
+                    data.altitude ? `${data.altitude.toFixed(2)} m` : 'N/A';
+
+                // Format speed with conversion to mph
+                const speedMph = data.speed ? (data.speed * 0.621371).toFixed(2) : 'N/A';
+                document.getElementById('speed').textContent = `${speedMph} mph`;
+
+                // Format timestamp
+                const date = new Date(data.timestamp * 1000);
+                document.getElementById('timestamp').textContent = date.toLocaleString();
+
+            } catch (error) {
+                showError('Error updating data display: ' + error.message);
+            }
+        }
+
+        function showError(message) {
+            const errorElement = document.getElementById('error-message');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            
+            // Add shake animation
+            errorElement.style.animation = 'none';
+            errorElement.offsetHeight; // Trigger reflow
+            errorElement.style.animation = 'slideIn 0.3s ease';
+
+            // Hide after 5 seconds
+            setTimeout(() => {
+                errorElement.style.animation = 'slideIn 0.3s ease reverse';
+                setTimeout(() => {
+                    errorElement.style.display = 'none';
+                }, 300);
+            }, 5000);
+        }
+
+        // Load Google Maps API
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyASI0J9rev9-NmWnNmSV8gqG_uOOR1-19Y&callback=initMap`;
+        script.async = true;
+        script.defer = true;
+        script.onerror = () => showError('Failed to load Google Maps');
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>
