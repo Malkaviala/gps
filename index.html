@@ -3,547 +3,301 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced GPS Tracking Dashboard</title>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <title>GPS Tracker Display</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
         }
-
-        :root {
-            --primary: #2563eb;
-            --secondary: #3b82f6;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --dark: #1f2937;
-            --light: #f3f4f6;
+        @keyframes glow {
+            0% { box-shadow: 0 0 5px rgba(66, 153, 225, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(66, 153, 225, 0.8); }
+            100% { box-shadow: 0 0 5px rgba(66, 153, 225, 0.5); }
         }
-
-        body {
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: #fff;
-            min-height: 100vh;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 2rem;
-            position: relative;
-            padding: 1rem;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(45deg, #60a5fa, #3b82f6);
+       
+        .gradient-text {
+            background: linear-gradient(120deg, #4F46E5, #06B6D4);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(12, 1fr);
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
-
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
         .map-container {
-            grid-column: span 8;
-            height: 600px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 15px;
-            overflow: hidden;
-            position: relative;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-
-        #map {
-            height: 100%;
-            width: 100%;
-            border-radius: 15px;
-        }
-
-        .stats-container {
-            grid-column: span 4;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .stat-card {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 1.5rem;
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
+            border-radius: 1rem;
         }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .stat-card::before {
-            content: '';
+        .map-overlay {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-            transform: translateX(-100%);
-            transition: 0.5s;
-        }
-
-        .stat-card:hover::before {
-            transform: translateX(100%);
-        }
-
-        .stat-label {
-            font-size: 0.875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #94a3b8;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .stat-value {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-top: 0.5rem;
-            color: #fff;
-        }
-
-        .charts-container {
-            grid-column: 1 / -1;
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1.5rem;
-        }
-
-        .chart-card {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 1.5rem;
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-            height: 300px;
-        }
-
-        .address-card {
-            grid-column: 1 / -1;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 1.5rem;
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .error-message {
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            background: var(--danger);
-            color: white;
-            padding: 1rem 2rem;
-            border-radius: 8px;
-            display: none;
-            animation: slideIn 0.3s ease;
+            top: 1rem;
+            right: 1rem;
             z-index: 1000;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 50px;
-            height: 50px;
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: translate(-50%, -50%) rotate(0deg); }
-            100% { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-
-        @media (max-width: 1200px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .map-container, .stats-container {
-                grid-column: 1 / -1;
-            }
-
-            .map-container {
-                height: 400px;
-            }
-
-            .charts-container {
-                grid-template-columns: 1fr;
-            }
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Onyx Trucking GPS Tracking Dashboard</h1>
-            <p>Real-time location tracking and analytics</p>
-        </div>
-        
-        <div class="dashboard-grid">
-            <div class="map-container">
-                <div id="map"></div>
-                <div class="loading"></div>
+<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 min-h-screen text-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <div class="glass-morphism rounded-2xl p-8 shadow-2xl">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h1 class="text-4xl font-bold gradient-text mb-2">GPS Tracker Pro</h1>
+                    <p class="text-gray-600">Real-time tracking and monitoring system</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <div class="animate-ping h-3 w-3 bg-green-500 rounded-full"></div>
+                    <span class="text-sm text-gray-600">Live</span>
+                </div>
             </div>
             
-            <div class="stats-container">
-                <div class="stat-card">
-                    <div class="stat-label">
-                        <i class="fas fa-location-dot"></i>
-                        Coordinates
-                    </div>
-                    <div class="stat-value">
-                        <div id="latitude">--.-°N</div>
-                        <div id="longitude">--.-°E</div>
+            <!-- Data Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Location Card -->
+                <div class="bg-gradient-to-br from-blue-500/10 to-blue-600/10 p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 float-animation">
+                    <h2 class="text-lg font-semibold text-blue-400 mb-3 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                        Location
+                    </h2>
+                    <div class="space-y-2">
+                        <p class="text-sm text-gray-300">Latitude: <span id="latitude" class="font-medium text-white">--</span>°</p>
+                        <p class="text-sm text-gray-300">Longitude: <span id="longitude" class="font-medium text-white">--</span>°</p>
+                        <p class="text-sm text-gray-300 mt-3">Address: <br><span id="address" class="font-medium text-white">--</span></p>
                     </div>
                 </div>
                 
-                <div class="stat-card">
-                    <div class="stat-label">
-                        <i class="fas fa-mountain"></i>
-                        Altitude
-                    </div>
-                    <div class="stat-value" id="altitude">--- m</div>
+                <!-- Elevation Card -->
+                <div class="bg-gradient-to-br from-emerald-500/10 to-emerald-600/10 p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 float-animation" style="animation-delay: 0.2s">
+                    <h2 class="text-lg font-semibold text-emerald-400 mb-3 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                        Elevation
+                    </h2>
+                    <div class="text-3xl font-bold text-white"><span id="elevation">--</span></div>
+                    <p class="text-sm text-gray-400">meters above sea level</p>
                 </div>
                 
-                <div class="stat-card">
-                    <div class="stat-label">
-                        <i class="fas fa-gauge-high"></i>
+                <!-- Speed Card -->
+                <div class="bg-gradient-to-br from-purple-500/10 to-purple-600/10 p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 float-animation" style="animation-delay: 0.4s">
+                    <h2 class="text-lg font-semibold text-purple-400 mb-3 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
                         Speed
+                    </h2>
+                    <div class="text-3xl font-bold text-white"><span id="speed">--</span></div>
+                    <p class="text-sm text-gray-400">mph</p>
+                    <div class="mt-2 text-sm text-gray-400">
+                        <span id="speed-ms" class="text-gray-500">-- m/s</span>
                     </div>
-                    <div class="stat-value" id="speed">--- mph</div>
                 </div>
                 
-                <div class="stat-card">
-                    <div class="stat-label">
-                        <i class="fas fa-clock"></i>
-                        Last Update
+                <!-- Temperature Card -->
+                <div class="bg-gradient-to-br from-red-500/10 to-red-600/10 p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 float-animation" style="animation-delay: 0.6s">
+                    <h2 class="text-lg font-semibold text-red-400 mb-3 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                        CPU Temperature
+                    </h2>
+                    <div class="text-3xl font-bold">
+                        <span id="temperature" class="text-white">--</span>
                     </div>
-                    <div class="stat-value" id="timestamp">---</div>
+                    <p class="text-sm text-gray-400">°C</p>
                 </div>
             </div>
-
-            <div class="address-card">
-                <i class="fas fa-map-marker-alt fa-2x"></i>
-                <div>
-                    <div class="stat-label">Current Location</div>
-                    <div class="stat-value" id="address">Fetching location...</div>
+            
+            <!-- Map Section -->
+            <div class="map-container glow-animation mb-6">
+                <div class="map-overlay glass-morphism px-4 py-2 rounded-lg">
+                    <p class="text-sm text-gray-700">Tracking Status: <span class="text-green-500 font-semibold">Active</span></p>
                 </div>
+                <div id="map" class="w-full h-96 z-0"></div>
             </div>
-
-            <div class="charts-container">
-                <div class="chart-card">
-                    <canvas id="speedChart"></canvas>
-                </div>
-                <div class="chart-card">
-                    <canvas id="altitudeChart"></canvas>
+            
+            <!-- Footer Stats -->
+            <div class="flex justify-between items-center text-sm bg-gray-800 rounded-xl p-4 mt-4">
+                <div class="flex items-center space-x-4">
+                    <div class="bg-gray-900 rounded-lg px-4 py-3 text-white border border-gray-700">
+                        <svg class="w-4 h-4 inline mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        <span class="text-white font-medium">Signal Strength:</span> 
+                        <span class="text-green-400 font-bold ml-1">Strong</span>
+                    </div>
+                    <div class="bg-gray-900 rounded-lg px-4 py-3 text-white border border-gray-700">
+                        <svg class="w-4 h-4 inline mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span class="text-white font-medium">Last Updated:</span> 
+                        <span id="lastUpdate" class="text-blue-300 font-bold ml-1">--</span>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="error-message" class="error-message"></div>
-
     <script>
+        // Firebase configuration
         const firebaseConfig = {
-            apiKey: "AIzaSyCsd6sSP2wwOwP5s_4_TbrTdzaXkU66e4g",
+            apiKey: "AIzaSyDHRiQ-KV8IjW9OFg_yMZ2pEVyBOVgHBwc",
             authDomain: "raspberrygps-36044.firebaseapp.com",
             databaseURL: "https://raspberrygps-36044-default-rtdb.firebaseio.com",
             projectId: "raspberrygps-36044",
             storageBucket: "raspberrygps-36044.appspot.com",
-            messagingSenderId: "858712924772",
-            appId: "G-08YW1WSTQJ"
+            messagingSenderId: "741056413452",
+            appId: "1:741056413452:web:40dca38db0d51b096d7e5d"
         };
 
+        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
 
-        let map, marker;
-        let speedData = [], altitudeData = [];
-        let speedChart, altitudeChart;
+        // Initialize map with a dark theme
+        const map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
 
-        function initCharts() {
-            const chartConfig = {
-                type: 'line',
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: {
-                        duration: 750,
-                        easing: 'easeInOutQuart'
-                    },
-                    plugins: {
-                        legend: {
-                            labels: {
-                                color: '#fff'
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            ticks: { color: '#fff' },
-                            grid: { color: 'rgba(255,255,255,0.1)' }
-                        },
-                        y: {
-                            ticks: { color: '#fff' },
-                            grid: { color: 'rgba(255,255,255,0.1)' }
-                        }
-                    }
-                }
-            };
+        let marker;
+        let pathCoordinates = [];
 
-            speedChart = new Chart(
-                document.getElementById('speedChart'),
-                {
-                    ...chartConfig,
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Speed (mph)',
-                            data: [],
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59,130,246,0.1)',
-                            fill: true,
-                            tension: 0.4
-                        }]
-                    }
-                }
-            );
-
-            altitudeChart = new Chart(
-                document.getElementById('altitudeChart'),
-                {
-                    ...chartConfig,
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Altitude (m)',
-                            data: [],
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16,185,129,0.1)',
-                            fill: true,
-                            tension: 0.4
-                        }]
-                    }
-                }
-            );
+        // Convert m/s to mph
+        function msToMph(ms) {
+            return ms * 2.237;
         }
 
-        function initMap() {
-            try {
-                const mapStyle = [
-                    {
-                        "elementType": "geometry",
-                        "stylers": [{"color": "#242f3e"}]
-                    },
-                    {
-                        "elementType": "labels.text.fill",
-                        "stylers": [{"color": "#746855"}]
-                    },
-                    {
-                        "elementType": "labels.text.stroke",
-                        "stylers": [{"color": "#242f3e"}]
-                    },
-                    {
-                        "featureType": "water",
-                        "elementType": "geometry",
-                        "stylers": [{"color": "#17263c"}]
-                    }
-                ];
+        // Function to update UI with smooth transitions
+        function updateUI(data) {
+            if (!data) return;
 
-                map = new google.maps.Map(document.getElementById("map"), {
-                    center: { lat: 0, lng: 0 },
-                    zoom: 15,
-                    styles: mapStyle,
-                    disableDefaultUI: true,
-                    zoomControl: true,
-                    mapTypeControl: true
-                });
-
-                document.querySelector('.loading').style.display = 'none';
-
-                const gpsLocationRef = database.ref('gps_location');
-                gpsLocationRef.on('value',
-                    (snapshot) => {
-                        const data = snapshot.val();
-                        if (data) {
-                            updateMap(data);
-                            updateData(data);
-                            updateCharts(data);
-                        }
-                    },
-                    (error) => showError('Database error: ' + error.message)
-                );
-
-                initCharts();
-            } catch (error) {
-                showError('Map initialization error: ' + error.message);
-            }
-        }
-
-        function updateMap(data) {
-            try {
-                const position = {
-                    lat: parseFloat(data.latitude),
-                    lng: parseFloat(data.longitude),
-                };
-
-                if (isNaN(position.lat) || isNaN(position.lng)) {
-                    throw new Error('Invalid coordinates received');
-                }
-
-                if (!marker) {
-                    marker = new google.maps.Marker({
-                        position: position,
-                        map: map,
-                        title: "Current Location",
-                        animation: google.maps.Animation.DROP,
-                        icon: {
-                            path: google.maps.SymbolPath.CIRCLE,
-                            scale: 10,
-                            fillColor: "#3b82f6",
-                            fillOpacity: 0.8,
-                            strokeColor: "#fff",
-                            strokeWeight: 2,
-                        }
-                    });
-                } else {
-                    marker.setPosition(position);
-                }
-
-                map.panTo(position);
-                fetchAddress(position);
-            } catch (error) {
-                showError('Error updating map: ' + error.message);
-            }
-        }
-
-        
-        
-
-        function fetchAddress(position) {
-            const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${position.lat},${position.lng}&key=AIzaSyASI0J9rev9-NmWnNmSV8gqG_uOOR1-19Y`;
-
-            fetch(geocodingUrl)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === "OK" && data.results.length > 0) {
-                        const address = data.results[0].formatted_address;
-                        document.getElementById('address').textContent = address;
-                        marker.setTitle(address);
-                    } else {
-                        document.getElementById('address').textContent = "Unable to fetch address";
-                    }
-                })
-                .catch(error => {
-                    showError('Error fetching address: ' + error.message);
-                    document.getElementById('address').textContent = "Error fetching address";
-                });
-        }
-
-        function updateData(data) {
-            try {
-                // Format latitude with N/S hemisphere
-                const latValue = Math.abs(data.latitude).toFixed(6);
-                const latDir = data.latitude >= 0 ? 'N' : 'S';
-                document.getElementById('latitude').textContent = `${latValue}° ${latDir}`;
-
-                // Format longitude with E/W hemisphere
-                const lonValue = Math.abs(data.longitude).toFixed(6);
-                const lonDir = data.longitude >= 0 ? 'E' : 'W';
-                document.getElementById('longitude').textContent = `${lonValue}° ${lonDir}`;
-
-                // Format altitude with unit
-                document.getElementById('altitude').textContent = 
-                    data.altitude ? `${data.altitude.toFixed(2)} m` : 'N/A';
-
-                // Format speed with conversion to mph
-                const speedMph = data.speed ? (data.speed * 0.621371).toFixed(2) : 'N/A';
-                document.getElementById('speed').textContent = `${speedMph} mph`;
-
-                // Format timestamp
-                const date = new Date(data.timestamp * 1000);
-                document.getElementById('timestamp').textContent = date.toLocaleString();
-
-            } catch (error) {
-                showError('Error updating data display: ' + error.message);
-            }
-        }
-
-        function showError(message) {
-            const errorElement = document.getElementById('error-message');
-            errorElement.textContent = message;
-            errorElement.style.display = 'block';
+            // Update location data
+            document.getElementById('latitude').textContent = data.latitude?.toFixed(6) || '--';
+            document.getElementById('longitude').textContent = data.longitude?.toFixed(6) || '--';
+            document.getElementById('elevation').textContent = data.elevation?.toFixed(2) || '--';
             
-            // Add shake animation
-            errorElement.style.animation = 'none';
-            errorElement.offsetHeight; // Trigger reflow
-            errorElement.style.animation = 'slideIn 0.3s ease';
+            // Update speed in both mph and m/s
+            const speedMs = data.speed || 0;
+            const speedMph = msToMph(speedMs);
+            document.getElementById('speed').textContent = speedMph.toFixed(1);
+            document.getElementById('speed-ms').textContent = `${speedMs.toFixed(1)} m/s`;
+            
+            // Update temperature
+            const cpuTemp = data.cpu_temperature || data.temperature;
+            document.getElementById('temperature').textContent = cpuTemp ? cpuTemp.toFixed(1) : '--';
+            
+            // Update timestamp with a more readable format
+            const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString() : '--';
+            document.getElementById('lastUpdate').textContent = timestamp;
 
-            // Hide after 5 seconds
-            setTimeout(() => {
-                errorElement.style.animation = 'slideIn 0.3s ease reverse';
-                setTimeout(() => {
-                    errorElement.style.display = 'none';
-                }, 300);
-            }, 5000);
+            // Reverse geocoding for address
+            if (data.latitude && data.longitude) {
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.latitude}&lon=${data.longitude}&zoom=18&addressdetails=1`)
+                    .then(response => response.json())
+                    .then(addressData => {
+                        const addr = addressData.address;
+                        let formattedAddress = [
+                            addr.house_number ? `${addr.house_number} ${addr.road}` : addr.road,
+                            addr.suburb,
+                            addr.city || addr.town,
+                            addr.state,
+                            addr.postcode
+                        ].filter(Boolean).join(', ');
+                        
+                        document.getElementById('address').textContent = formattedAddress || 'Address not found';
+                    })
+                    .catch(() => {
+                        document.getElementById('address').textContent = 'Could not fetch address';
+                    });
+            }
+
+            // Update map with smooth animation and path tracking
+            if (data.latitude && data.longitude) {
+                const position = [data.latitude, data.longitude];
+                
+                // Add position to path coordinates
+                pathCoordinates.push(position);
+                
+                // Keep only last 100 positions to avoid performance issues
+                if (pathCoordinates.length > 100) {
+                    pathCoordinates.shift();
+                }
+                
+                // Update or create marker with custom icon
+                if (!marker) {
+                    marker = L.marker(position, {
+                        icon: L.divIcon({
+                            className: 'custom-div-icon',
+                            html: `<div style="
+                                background-color: rgba(59, 130, 246, 0.9);
+                                width: 15px;
+                                height: 15px;
+                                border-radius: 50%;
+                                border: 2px solid white;
+                                box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+                            "></div>`,
+                            iconSize: [15, 15],
+                            iconAnchor: [7, 7]
+                        })
+                    }).addTo(map);
+                } else {
+                    marker.setLatLng(position);
+                }
+
+                // Create or update path
+                if (window.currentPath) {
+                    map.removeLayer(window.currentPath);
+                }
+                window.currentPath = L.polyline(pathCoordinates, {
+                    color: '#3B82F6',
+                    weight: 3,
+                    opacity: 0.8,
+                    lineJoin: 'round'
+                }).addTo(map);
+
+                // Smooth pan to new position
+                map.setView(position, 15, {
+                    animate: true,
+                    duration: 1,
+                    easeLinearity: 0.5
+                });
+            }
         }
 
-        // Load Google Maps API
-        const script = document.createElement('script');
-        script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyASI0J9rev9-NmWnNmSV8gqG_uOOR1-19Y&callback=initMap`;
-        script.async = true;
-        script.defer = true;
-        script.onerror = () => showError('Failed to load Google Maps');
-        document.head.appendChild(script);
+        // Listen for GPS data updates
+        try {
+            const gpsRef = firebase.database().ref('/gps_data');
+            gpsRef.on('value', function(snapshot) {
+                const data = snapshot.val();
+                updateUI(data);
+            }, function(error) {
+                console.error('Error reading GPS data:', error);
+            });
+        } catch (error) {
+            console.error('Error setting up Firebase listener:', error);
+        }
     </script>
 </body>
 </html>
