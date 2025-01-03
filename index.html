@@ -110,9 +110,7 @@
                     </h2>
                     <div class="text-3xl font-bold text-white"><span id="speed">--</span></div>
                     <p class="text-sm text-gray-400">mph</p>
-                    <div class="mt-2 text-sm text-gray-400">
-                        <span id="speed-ms" class="text-gray-500">-- m/s</span>
-                    </div>
+                    
                 </div>
                 
                 <!-- Temperature Card -->
@@ -185,9 +183,7 @@
         let pathCoordinates = [];
 
         // Convert m/s to mph
-        function msToMph(ms) {
-            return ms * 2.237;
-        }
+        
 
         // Function to update UI with smooth transitions
         function updateUI(data) {
@@ -199,17 +195,27 @@
             document.getElementById('elevation').textContent = data.elevation?.toFixed(2) || '--';
             
             // Update speed in both mph and m/s
-            const speedMs = data.speed || 0;
-            const speedMph = msToMph(speedMs);
-            document.getElementById('speed').textContent = speedMph.toFixed(1);
-            document.getElementById('speed-ms').textContent = `${speedMs.toFixed(1)} m/s`;
+            // Speed comes in mph from Python code
+            // Speed is in mph from Python code
+            const speed = data.speed || 0;
+            document.getElementById('speed').textContent = speed.toFixed(1);
             
             // Update temperature
             const cpuTemp = data.cpu_temperature || data.temperature;
             document.getElementById('temperature').textContent = cpuTemp ? cpuTemp.toFixed(1) : '--';
             
             // Update timestamp with a more readable format
-            const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString() : '--';
+            // Update timestamp with local timezone
+            const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString('en-US', {
+                timeZone: 'America/New_York',  // Eastern Time
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            }) : '--';
             document.getElementById('lastUpdate').textContent = timestamp;
 
             // Reverse geocoding for address
