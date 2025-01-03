@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Tracker Display</title>
+    <title>GPS Tracker Pro</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -53,6 +53,7 @@
             right: 1rem;
             z-index: 1000;
         }
+        
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 min-h-screen text-gray-100">
@@ -85,6 +86,34 @@
                         <p class="text-sm text-gray-300">Latitude: <span id="latitude" class="font-medium text-white">--</span>°</p>
                         <p class="text-sm text-gray-300">Longitude: <span id="longitude" class="font-medium text-white">--</span>°</p>
                         <p class="text-sm text-gray-300 mt-3">Address: <br><span id="address" class="font-medium text-white">--</span></p>
+                        <p class="text-sm text-gray-300">Distance: <span id="distance" class="font-medium text-white">--</span></p>
+                        
+                        <!-- Map Provider Selector -->
+                        <div class="mt-3">
+                            <label class="text-sm text-gray-300 block mb-2">Navigation App:</label>
+                            <select id="mapProvider" class="w-full bg-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="google">Google Maps</option>
+                                <option value="waze">Waze</option>
+                                <option value="apple">Apple Maps</option>
+                            </select>
+                        </div>
+
+                        <!-- Get Directions Button -->
+                        <button id="getDirections" class="mt-3 w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-300">
+                            <svg id="directionIcon" class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                            </svg>
+                            <span id="directionsText">Directions</span>
+                            <!-- Loading Spinner (hidden by default) -->
+                            <svg id="loadingSpinner" class="hidden w-4 h-4 ml-2 animate-spin" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </button>
+
+                        <!-- Error Message Display -->
+                        <div id="locationError" class="hidden mt-2 text-sm text-red-400 bg-red-900/20 p-2 rounded-lg">
+                        </div>
                     </div>
                 </div>
                 
@@ -110,7 +139,6 @@
                     </h2>
                     <div class="text-3xl font-bold text-white"><span id="speed">--</span></div>
                     <p class="text-sm text-gray-400">mph</p>
-                    
                 </div>
                 
                 <!-- Temperature Card -->
@@ -181,33 +209,165 @@
 
         let marker;
         let pathCoordinates = [];
+        let userLocation = null;
+        let distancePolyline = null;
 
-        // Convert m/s to mph
-        
+        // Function to calculate distance between two points
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 3959; // Earth's radius in miles
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c; // Distance in miles
+            
+            if (distance < 0.1) {
+                return `${(distance * 5280).toFixed(0)} feet`;
+            }
+            return `${distance.toFixed(1)} miles`;
+        }
+
+        // Function to show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('locationError');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            setTimeout(() => {
+                errorDiv.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Function to toggle loading state
+        function setLoadingState(isLoading) {
+            const button = document.getElementById('getDirections');
+            const spinner = document.getElementById('loadingSpinner');
+            const text = document.getElementById('directionsText');
+            const icon = document.getElementById('directionIcon');
+
+            button.disabled = isLoading;
+            if (isLoading) {
+                spinner.classList.remove('hidden');
+                icon.classList.add('hidden');
+                text.textContent = 'Loading...';
+            } else {
+                spinner.classList.add('hidden');
+                icon.classList.remove('hidden');
+                text.textContent = 'Get Directions';
+            }
+        }
+
+        // Get user's location with enhanced error handling
+        function getUserLocation() {
+            if ("geolocation" in navigator) {
+                setLoadingState(true);
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lon: position.coords.longitude
+                        };
+                        updateDistance();
+                        setLoadingState(false);
+                    },
+                    function(error) {
+                        let errorMessage = "Unable to get your location. ";
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage += "Please enable location access in your browser settings.";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage += "Location information unavailable.";
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage += "Location request timed out.";
+                                break;
+                            default:
+                                errorMessage += "An unknown error occurred.";
+                        }
+                        showError(errorMessage);
+                        setLoadingState(false);
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            } else {
+                showError("Geolocation is not supported by your browser.");
+                setLoadingState(false);
+            }
+        }
+
+        // Function to update the visual distance indicator on the map
+        function updateDistanceVisual() {
+            if (userLocation && currentData && currentData.latitude && currentData.longitude) {
+                // Remove existing distance line
+                if (distancePolyline) {
+                    map.removeLayer(distancePolyline);
+                }
+
+                // Create new distance line
+                const points = [
+                    [userLocation.lat, userLocation.lon],
+                    [currentData.latitude, currentData.longitude]
+                ];
+                
+                distancePolyline = L.polyline(points, {
+                    color: '#10B981', // Emerald color
+                    dashArray: '5, 10', // Dashed line
+                    weight: 2,
+                    opacity: 0.6
+                }).addTo(map);
+
+                // Fit map to show both points
+                const bounds = L.latLngBounds(points);
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+        }
 
         // Function to update UI with smooth transitions
         function updateUI(data) {
             if (!data) return;
+            
+            // Store current data globally
+            currentData = data;
+            
+            // Update distance if we have user location
+            updateDistance();
 
             // Update location data
             document.getElementById('latitude').textContent = data.latitude?.toFixed(6) || '--';
             document.getElementById('longitude').textContent = data.longitude?.toFixed(6) || '--';
             document.getElementById('elevation').textContent = data.elevation?.toFixed(2) || '--';
             
-            // Update speed in both mph and m/s
-            // Speed comes in mph from Python code
-            // Speed is in mph from Python code
+            // Update speed
             const speed = data.speed || 0;
             document.getElementById('speed').textContent = speed.toFixed(1);
             
             // Update temperature
             const cpuTemp = data.cpu_temperature || data.temperature;
             document.getElementById('temperature').textContent = cpuTemp ? cpuTemp.toFixed(1) : '--';
+
+            // State abbreviations mapping
+            const stateAbbreviations = {
+                'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+                'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
+                'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+                'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+                'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
+                'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+                'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
+                'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+                'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
+                'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY'
+            };
             
-            // Update timestamp with a more readable format
             // Update timestamp with local timezone
             const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString('en-US', {
-                timeZone: 'America/New_York',  // Eastern Time
+                timeZone: 'America/New_York',
                 year: 'numeric',
                 month: 'numeric',
                 day: 'numeric',
@@ -218,21 +378,39 @@
             }) : '--';
             document.getElementById('lastUpdate').textContent = timestamp;
 
-            // Reverse geocoding for address
+            // Address formatting helper function
+            function formatStreetAddress(addr) {
+                if (!addr) return '';
+                const streetNumber = addr.house_number || '';
+                const streetName = addr.road || '';
+                return [streetNumber, streetName].filter(Boolean).join(' ');
+            }
+
+            // Reverse geocoding for address with improved formatting
             if (data.latitude && data.longitude) {
                 fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.latitude}&lon=${data.longitude}&zoom=18&addressdetails=1`)
                     .then(response => response.json())
                     .then(addressData => {
                         const addr = addressData.address;
-                        let formattedAddress = [
-                            addr.house_number ? `${addr.house_number} ${addr.road}` : addr.road,
-                            addr.suburb,
-                            addr.city || addr.town,
-                            addr.state,
-                            addr.postcode
-                        ].filter(Boolean).join(', ');
+                        const streetAddress = formatStreetAddress(addr);
+                        const city = addr.city || addr.town || addr.village || '';
+                        const stateAbbr = stateAbbreviations[addr.state] || addr.state || '';
+                        const zipCode = addr.postcode || '';
                         
-                        document.getElementById('address').textContent = formattedAddress || 'Address not found';
+                        // Create formatted address with optional components
+                        const addressComponents = [
+                            streetAddress,
+                            city,
+                            `${stateAbbr} ${zipCode}`.trim()
+                        ].filter(Boolean);
+
+                        // Join components with proper formatting
+                        const formattedAddress = addressComponents.join(', ');
+                        
+                        // Update the DOM with formatted address
+                        const addressElement = document.getElementById('address');
+                        addressElement.textContent = formattedAddress || 'Address not found';
+                        addressElement.title = formattedAddress; // Add tooltip for long addresses
                     })
                     .catch(() => {
                         document.getElementById('address').textContent = 'Could not fetch address';
@@ -292,6 +470,45 @@
             }
         }
 
+        // Update distance when we have both locations
+        function updateDistance() {
+            const distanceElement = document.getElementById('distance');
+            if (userLocation && currentData && currentData.latitude && currentData.longitude) {
+                const distance = calculateDistance(
+                    userLocation.lat,
+                    userLocation.lon,
+                    currentData.latitude,
+                    currentData.longitude
+                );
+                distanceElement.textContent = distance;
+                updateDistanceVisual();
+            }
+        }
+
+        // Function to get directions URL based on selected provider
+        function getDirectionsUrl(destination) { const provider = document.getElementById('mapProvider').value;
+            const destinationStr = `${destination.lat},${destination.lon}`;
+            
+            switch(provider) {
+                case 'google':
+                    return `https://www.google.com/maps/dir/?api=1&destination=${destinationStr}`;
+                case 'waze':
+                    return `https://www.waze.com/ul?ll=${destinationStr}&navigate=yes`;
+                case 'apple':
+                    return `https://maps.apple.com/?daddr=${destinationStr}`;
+                default:
+                    return `https://www.google.com/maps/dir/?api=1&destination=${destinationStr}`;
+            }
+        }
+
+        // Initialize user location tracking
+        getUserLocation();
+        // Update user location periodically
+        setInterval(getUserLocation, 30000); // Update every 30 seconds
+
+        // Store current data globally
+        let currentData = null;
+
         // Listen for GPS data updates
         try {
             const gpsRef = firebase.database().ref('/gps_data');
@@ -304,6 +521,46 @@
         } catch (error) {
             console.error('Error setting up Firebase listener:', error);
         }
+
+        // Add click handler for directions button
+        document.getElementById('getDirections').addEventListener('click', function() {
+            if (!userLocation) {
+                showError("Your location is not available. Please enable location services.");
+                return;
+            }
+            
+            if (currentData && currentData.latitude && currentData.longitude) {
+                setLoadingState(true);
+                const destination = {
+                    lat: currentData.latitude,
+                    lon: currentData.longitude
+                };
+                
+                const url = getDirectionsUrl(destination);
+                window.open(url, '_blank');
+                setLoadingState(false);
+            } else {
+                showError("Target location is not available.");
+            }
+        });
+
+        // Add change handler for map provider
+        document.getElementById('mapProvider').addEventListener('change', function() {
+            // Save preference to localStorage
+            localStorage.setItem('preferredMapProvider', this.value);
+        });
+
+        // Load preferred map provider if saved
+        const savedProvider = localStorage.getItem('preferredMapProvider');
+        if (savedProvider) {
+            document.getElementById('mapProvider').value = savedProvider;
+        }
+
+        // Add resize handler to update map
+        window.addEventListener('resize', function() {
+            map.invalidateSize();
+        });
     </script>
 </body>
 </html>
+                    
