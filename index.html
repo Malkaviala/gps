@@ -6,6 +6,8 @@
     <title>GPS Tracker Dashboard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-database-compat.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
             --primary-color: #2c3e50;
@@ -27,15 +29,6 @@
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 20px;
-        }
-
-        @media (min-width: 768px) {
-            .container {
-                grid-template-columns: 2fr 1fr;
-            }
         }
 
         .panel {
@@ -43,20 +36,12 @@
             border-radius: 12px;
             padding: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        h1 {
-            color: var(--primary-color);
-            text-align: center;
-            margin: 0 0 20px 0;
-            grid-column: 1 / -1;
-            font-size: 2em;
+            margin-bottom: 20px;
         }
 
         #map {
             height: 500px;
             border-radius: 12px;
-            grid-column: 1 / -1;
             margin-bottom: 20px;
         }
 
@@ -130,13 +115,6 @@
             color: var(--primary-color);
         }
 
-        .path-info {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-
         @keyframes highlight {
             0% { background-color: var(--accent-color); color: white; }
             100% { background-color: #f8f9fa; color: var(--accent-color); }
@@ -149,10 +127,34 @@
 </head>
 <body>
     <div class="container">
-        <h1>GPS Tracker Dashboard</h1>
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">GPS Tracker Dashboard</h1>
         
         <div id="map" class="panel"></div>
         
+        <!-- Location Panel -->
+        <div class="panel">
+            <div class="space-y-4">
+                <div class="flex items-center space-x-2">
+                    <i class="fas fa-map-marker-alt text-blue-500"></i>
+                    <span class="text-gray-700 ml-2">6713 Valcourt rd, Charlotte NC</span>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <i class="fas fa-compass text-blue-500"></i>
+                    <span class="text-gray-700 ml-2" id="distance">Calculating distance...</span>
+                </div>
+
+                <button
+                    onclick="openDirections()"
+                    class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors flex items-center justify-center space-x-2"
+                >
+                    <i class="fas fa-directions text-white"></i>
+                    <span class="ml-2">Get Directions</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Tracking Data Panel -->
         <div class="panel">
             <div class="data-item">
                 <span class="label">Latitude</span>
@@ -181,8 +183,9 @@
             <div id="status" class="status">Connecting to tracker...</div>
         </div>
 
+        <!-- Statistics Panel -->
         <div class="panel">
-            <h2>Trip Statistics</h2>
+            <h2 class="text-xl font-semibold mb-4">Trip Statistics</h2>
             <div class="stats-panel">
                 <div class="stat-item">
                     <div class="stat-value" id="totalDistance">0.00</div>
@@ -212,6 +215,8 @@
         let maxSpeed = 0;
         let movementStartTime = null;
         let totalMovementTime = 0;
+        const targetLat = 35.3411073;
+        const targetLng = -80.8647512;
 
         // Initialize Firebase
         const firebaseConfig = {
@@ -252,29 +257,26 @@
                     newData.lat, newData.lon
                 );
                 
-                if (distance > 0.0001) { // More than ~0.5 feet
+                if (distance > 0.0001) {
                     totalDistance += distance;
                     document.getElementById('totalDistance').textContent = totalDistance.toFixed(2);
                     
-                    // Update movement time
                     if (!movementStartTime) {
                         movementStartTime = new Date();
                     }
                 } else if (movementStartTime) {
-                    totalMovementTime += (new Date() - movementStartTime) / 60000; // Convert to minutes
+                    totalMovementTime += (new Date() - movementStartTime) / 60000;
                     movementStartTime = null;
                     document.getElementById('movementTime').textContent = formatDuration(totalMovementTime);
                 }
             }
 
-            // Update max speed
             const speed = parseFloat(newData.speed);
             if (speed > maxSpeed) {
                 maxSpeed = speed;
                 document.getElementById('maxSpeed').textContent = maxSpeed.toFixed(1);
             }
 
-            // Calculate average speed
             if (totalMovementTime > 0) {
                 const avgSpeed = totalDistance / (totalMovementTime / 60);
                 document.getElementById('avgSpeed').textContent = avgSpeed.toFixed(1);
@@ -288,7 +290,6 @@
             marker.setPosition(position);
             map.panTo(position);
 
-            // Update path
             if (!path) {
                 path = new google.maps.Polyline({
                     path: [position],
@@ -307,8 +308,37 @@
             }
         }
 
+        function getUserLocation() {
+            const distanceElement = document.getElementById('distance');
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const distance = calculateDistance(
+                            position.coords.latitude,
+                            position.coords.longitude,
+                            targetLat,
+                            targetLng
+                        );
+                        distanceElement.textContent = `Distance: ${distance.toFixed(1)} miles`;
+                    },
+                    (error) => {
+                        console.error('Error getting location:', error);
+                        distanceElement.textContent = 'Location access denied';
+                    }
+                );
+            } else {
+                distanceElement.textContent = 'Geolocation not supported';
+            }
+        }
+
+        function openDirections() {
+            const url = `https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}`;
+            window.open(url, '_blank');
+        }
+
         function initMap() {
-            const defaultCenter = { lat: 35.3411073, lng: -80.8647512 };
+            const defaultCenter = { lat: targetLat, lng: targetLng };
             
             map = new google.maps.Map(document.getElementById('map'), {
                 center: defaultCenter,
@@ -335,25 +365,24 @@
                     strokeWeight: 2
                 }
             });
+
+            getUserLocation();
         }
 
-       // Listen for GPS data updates
-       database.ref('/gps_data').on('value', (snapshot) => {
+        // Listen for GPS data updates
+        database.ref('/gps_data').on('value', (snapshot) => {
             const data = snapshot.val();
             if (data) {
                 try {
-                    // Update display values with consistent precision
-                    document.getElementById('lat').textContent = Number(data.lat).toFixed(6);  // 6 decimal places
-                    document.getElementById('lon').textContent = Number(data.lon).toFixed(6);  // 6 decimal places
-                    document.getElementById('alt').textContent = `${Number(data.alt).toFixed(2)} m`;  // 2 decimal places
-                    document.getElementById('speed').textContent = `${Number(data.speed).toFixed(2)} mph`;  // 2 decimal places
-                    document.getElementById('temp').textContent = `${Number(data.cpu_temperature).toFixed(1)}°C`;  // 1 decimal place
+                    document.getElementById('lat').textContent = Number(data.lat).toFixed(6);
+                    document.getElementById('lon').textContent = Number(data.lon).toFixed(6);
+                    document.getElementById('alt').textContent = `${Number(data.alt).toFixed(2)} m`;
+                    document.getElementById('speed').textContent = `${Number(data.speed).toFixed(2)} mph`;
+                    document.getElementById('temp').textContent = `${Number(data.cpu_temperature).toFixed(1)}°C`;
                     
-                    // Format timestamp
                     const timestamp = new Date(data.timestamp);
                     document.getElementById('timestamp').textContent = timestamp.toLocaleString();
                     
-                    // Update status
                     const timeDiff = (new Date() - timestamp) / 1000;
                     const status = document.getElementById('status');
                     if (timeDiff < 300) {
@@ -386,6 +415,7 @@
             }
         });
     </script>
+    
     <script async defer
         src="https://maps.googleapis.com/maps/api/js?key=AIzaSyASI0J9rev9-NmWnNmSV8gqG_uOOR1-19Y&callback=initMap">
     </script>
