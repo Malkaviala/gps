@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* [Previous styles remain unchanged] */
         :root {
             --primary-color: #2c3e50;
             --accent-color: #3498db;
@@ -137,7 +136,7 @@
             <div class="space-y-4">
                 <div class="flex items-center space-x-2">
                     <i class="fas fa-map-marker-alt text-blue-500"></i>
-                    <span class="text-gray-700 ml-2">6713 Valcourt rd, Charlotte NC</span>
+                    <span class="text-gray-700 ml-2" id="address">Loading address...</span>
                 </div>
                 
                 <div class="flex items-center space-x-2">
@@ -209,16 +208,13 @@
     </div>
 
     <script>
-        let map, marker, path;
+        let map, marker, path, geocoder;
         let locationHistory = [];
         const MAX_HISTORY_POINTS = 1000;
         let totalDistance = 0;
         let maxSpeed = 0;
         let movementStartTime = null;
         let totalMovementTime = 0;
-        // Updated coordinates with 8 decimal precision
-        const targetLat = 35.34103530;
-        const targetLng = -80.86472030;
 
         // Initialize Firebase
         const firebaseConfig = {
@@ -234,7 +230,6 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        // Base distance calculation function - keep this
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const R = 3959.87433; // Earth's radius in miles
             const lat1Rad = lat1 * Math.PI / 180;
@@ -253,116 +248,45 @@
             return R * c;
         }
 
-        // New function for user-to-tracker distance that uses calculateDistance
         function calculateDistanceFromUser(trackerLat, trackerLon) {
-    return new Promise((resolve, reject) => {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const userLat = position.coords.latitude;
-                    const userLon = position.coords.longitude;
-                    const distance = calculateDistance(userLat, userLon, trackerLat, trackerLon);
-                    const formattedDistance = Number(distance).toFixed(2);
-                    resolve(formattedDistance);
-                },
-                (error) => {
-                    reject("Error getting user location: " + error.message);
+            return new Promise((resolve, reject) => {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            const userLat = position.coords.latitude;
+                            const userLon = position.coords.longitude;
+                            const distance = calculateDistance(userLat, userLon, trackerLat, trackerLon);
+                            const formattedDistance = Number(distance).toFixed(2);
+                            resolve(formattedDistance);
+                        },
+                        (error) => {
+                            reject("Error getting user location: " + error.message);
+                        }
+                    );
+                } else {
+                    reject("Geolocation is not supported by this browser.");
                 }
-            );
-        } else {
-            reject("Geolocation is not supported by this browser.");
-        }
-    });
-}
-
-database.ref('/gps_data').on('value', async (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-        try {
-            // First try to get and update the distance
-            const distance = await calculateDistanceFromUser(data.lat, data.lon);
-            document.getElementById('distance').textContent = `Distance: ${distance} miles`;
-        } catch (error) {
-            console.error(error);
-            document.getElementById('distance').textContent = 'Unable to calculate distance';
+            });
         }
 
-        try {
-            // Update coordinates display
-            document.getElementById('lat').textContent = Number(data.lat).toFixed(8);
-            document.getElementById('lon').textContent = Number(data.lon).toFixed(8);
-            document.getElementById('alt').textContent = `${Number(data.alt).toFixed(2)} m`;
-            document.getElementById('speed').textContent = `${Number(data.speed).toFixed(2)} mph`;
-            document.getElementById('temp').textContent = `${Number(data.cpu_temperature).toFixed(1)}°C`;
+        function updateAddress(lat, lng) {
+            const latlng = { lat: parseFloat(lat), lng: parseFloat(lng) };
             
-            // Update timestamp and status
-            const timestamp = new Date(data.timestamp);
-            document.getElementById('timestamp').textContent = timestamp.toLocaleString();
-            
-            const timeDiff = (new Date() - timestamp) / 1000;
-            const status = document.getElementById('status');
-            if (timeDiff < 300) {
-                status.className = 'status online';
-                status.textContent = 'Tracker Online';
-            } else {
-                status.className = 'status offline';
-                status.textContent = 'Tracker Offline';
-            }
-
-            // Update statistics
-            const position = {
-                lat: Number(data.lat),
-                lon: Number(data.lon),
-                speed: Number(data.speed),
-                timestamp: timestamp
-            };
-
-            if (locationHistory.length > 0) {
-                const prevLocation = locationHistory[locationHistory.length - 1];
-                const movementDistance = calculateDistance(
-                    prevLocation.lat, prevLocation.lon,
-                    position.lat, position.lon
-                );
+            geocoder.geocode({ location: latlng }, (results, status) => {
+                const addressElement = document.getElementById('address');
                 
-                if (movementDistance > 0.0001) {
-                    totalDistance += movementDistance;
-                    document.getElementById('totalDistance').textContent = totalDistance.toFixed(2);
-                    
-                    if (!movementStartTime) {
-                        movementStartTime = new Date();
+                if (status === 'OK') {
+                    if (results[0]) {
+                        addressElement.textContent = results[0].formatted_address;
+                    } else {
+                        addressElement.textContent = 'Address not found';
                     }
-                } else if (movementStartTime) {
-                    totalMovementTime += (new Date() - movementStartTime) / 60000;
-                    movementStartTime = null;
-                    document.getElementById('movementTime').textContent = formatDuration(totalMovementTime);
+                } else {
+                    addressElement.textContent = 'Error fetching address';
+                    console.error('Geocoder failed due to: ' + status);
                 }
-            }
-
-            // Update speed statistics
-            if (position.speed > maxSpeed) {
-                maxSpeed = position.speed;
-                document.getElementById('maxSpeed').textContent = maxSpeed.toFixed(2);
-            }
-
-            if (totalMovementTime > 0) {
-                const avgSpeed = totalDistance / (totalMovementTime / 60);
-                document.getElementById('avgSpeed').textContent = avgSpeed.toFixed(2);
-            }
-
-            // Update location history
-            locationHistory.push(position);
-            if (locationHistory.length > MAX_HISTORY_POINTS) {
-                locationHistory.shift();
-            }
-
-            // Update map
-            updateMap(position.lat, position.lon);
-            
-        } catch (error) {
-            console.error('Error processing GPS data:', error);
+            });
         }
-    }
-});
 
         function formatDuration(minutes) {
             const hours = Math.floor(minutes / 60);
@@ -370,44 +294,9 @@ database.ref('/gps_data').on('value', async (snapshot) => {
             return `${hours}:${mins.toString().padStart(2, '0')}`;
         }
 
-        function updateStatistics(newData) {
-            if (locationHistory.length > 0) {
-                const prevLocation = locationHistory[locationHistory.length - 1];
-                const distance = calculateDistance(
-                    prevLocation.lat, prevLocation.lon,
-                    newData.lat, newData.lon
-                );
-                
-                if (distance > 0.0001) { // More precise threshold
-                    totalDistance += distance;
-                    document.getElementById('totalDistance').textContent = totalDistance.toFixed(8);
-                    
-                    if (!movementStartTime) {
-                        movementStartTime = new Date();
-                    }
-                } else if (movementStartTime) {
-                    totalMovementTime += (new Date() - movementStartTime) / 60000;
-                    movementStartTime = null;
-                    document.getElementById('movementTime').textContent = formatDuration(totalMovementTime);
-                }
-            }
-
-            const speed = Number(newData.speed);
-            if (speed > maxSpeed) {
-                maxSpeed = speed;
-                document.getElementById('maxSpeed').textContent = maxSpeed.toFixed(2);
-            }
-
-            if (totalMovementTime > 0) {
-                const avgSpeed = totalDistance / (totalMovementTime / 60);
-                document.getElementById('avgSpeed').textContent = avgSpeed.toFixed(2);
-            }
-        }
-
         function updateMap(lat, lng) {
             if (!map || !marker) return;
             
-            // Ensure 8 decimal precision
             lat = Number(Number(lat).toFixed(8));
             lng = Number(Number(lng).toFixed(8));
             
@@ -434,39 +323,8 @@ database.ref('/gps_data').on('value', async (snapshot) => {
             }
         }
 
-        function getUserLocation() {
-            const distanceElement = document.getElementById('distance');
-            
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const userLat = Number(position.coords.latitude.toFixed(8));
-                        const userLng = Number(position.coords.longitude.toFixed(8));
-                        const distance = calculateDistance(
-                            userLat,
-                            userLng,
-                            targetLat,
-                            targetLng
-                        );
-                        distanceElement.textContent = `Distance: ${distance.toFixed(8)} miles`;
-                    },
-                    (error) => {
-                        console.error('Error getting location:', error);
-                        distanceElement.textContent = 'Location access denied';
-                    }
-                );
-            } else {
-                distanceElement.textContent = 'Geolocation not supported';
-            }
-        }
-
-        function openDirections() {
-            const url = `https://www.google.com/maps/dir/?api=1&destination=${targetLat.toFixed(8)},${targetLng.toFixed(8)}`;
-            window.open(url, '_blank');
-        }
-
         function initMap() {
-            const defaultCenter = { lat: targetLat, lng: targetLng };
+            const defaultCenter = { lat: 0, lng: 0 }; // Will be updated with first GPS reading
             
             map = new google.maps.Map(document.getElementById('map'), {
                 center: defaultCenter,
@@ -494,21 +352,51 @@ database.ref('/gps_data').on('value', async (snapshot) => {
                 }
             });
 
-            getUserLocation();
+            geocoder = new google.maps.Geocoder();
+        }
+
+        let currentLat = null;
+        let currentLng = null;
+
+        function openDirections() {
+            if (currentLat && currentLng) {
+                const url = `https://www.google.com/maps/dir/?api=1&destination=${currentLat},${currentLng}`;
+                window.open(url, '_blank');
+            } else {
+                console.error('No current location available');
+                alert('Waiting for GPS location data...');
+            }
         }
 
         // Listen for GPS data updates
-        database.ref('/gps_data').on('value', (snapshot) => {
+        database.ref('/gps_data').on('value', async (snapshot) => {
             const data = snapshot.val();
             if (data) {
                 try {
-                    // Update display with 8 decimal precision for coordinates
+                    // Update current coordinates
+                    currentLat = Number(data.lat).toFixed(8);
+                    currentLng = Number(data.lon).toFixed(8);
+
+                    // Update address
+                    updateAddress(data.lat, data.lon);
+
+                    // Update distance
+                    try {
+                        const distance = await calculateDistanceFromUser(data.lat, data.lon);
+                        document.getElementById('distance').textContent = `Distance: ${distance} miles`;
+                    } catch (error) {
+                        console.error(error);
+                        document.getElementById('distance').textContent = 'Unable to calculate distance';
+                    }
+
+                    // Update coordinates display
                     document.getElementById('lat').textContent = Number(data.lat).toFixed(8);
                     document.getElementById('lon').textContent = Number(data.lon).toFixed(8);
                     document.getElementById('alt').textContent = `${Number(data.alt).toFixed(2)} m`;
                     document.getElementById('speed').textContent = `${Number(data.speed).toFixed(2)} mph`;
                     document.getElementById('temp').textContent = `${Number(data.cpu_temperature).toFixed(1)}°C`;
                     
+                    // Update timestamp and status
                     const timestamp = new Date(data.timestamp);
                     document.getElementById('timestamp').textContent = timestamp.toLocaleString();
                     
@@ -522,21 +410,55 @@ database.ref('/gps_data').on('value', async (snapshot) => {
                         status.textContent = 'Tracker Offline';
                     }
 
-                    // Update location history and map with 8 decimal precision
+                    // Update location history and statistics
                     const position = {
                         lat: Number(Number(data.lat).toFixed(8)),
                         lon: Number(Number(data.lon).toFixed(8)),
                         speed: Number(data.speed),
                         timestamp: timestamp
                     };
-                    
+
+                    // Update trip statistics
+                    if (locationHistory.length > 0) {
+                        const prevLocation = locationHistory[locationHistory.length - 1];
+                        const movementDistance = calculateDistance(
+                            prevLocation.lat, prevLocation.lon,
+                            position.lat, position.lon
+                        );
+                        
+                        if (movementDistance > 0.0001) {
+                            totalDistance += movementDistance;
+                            document.getElementById('totalDistance').textContent = totalDistance.toFixed(2);
+                            
+                            if (!movementStartTime) {
+                                movementStartTime = new Date();
+                            }
+                        } else if (movementStartTime) {
+                            totalMovementTime += (new Date() - movementStartTime) / 60000;
+                            movementStartTime = null;
+                            document.getElementById('movementTime').textContent = formatDuration(totalMovementTime);
+                        }
+                    }
+
+                    // Update speed statistics
+                    if (position.speed > maxSpeed) {
+                        maxSpeed = position.speed;
+                        document.getElementById('maxSpeed').textContent = maxSpeed.toFixed(2);
+                    }
+
+                    if (totalMovementTime > 0) {
+                        const avgSpeed = totalDistance / (totalMovementTime / 60);
+                        document.getElementById('avgSpeed').textContent = avgSpeed.toFixed(2);
+                    }
+
+                    // Update location history
                     locationHistory.push(position);
                     if (locationHistory.length > MAX_HISTORY_POINTS) {
                         locationHistory.shift();
                     }
 
+                    // Update map
                     updateMap(position.lat, position.lon);
-                    updateStatistics(position);
                     
                 } catch (error) {
                     console.error('Error processing GPS data:', error);
