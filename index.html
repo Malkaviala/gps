@@ -124,11 +124,22 @@
         .highlight {
             animation: highlight 1s;
         }
+        .countdown {
+            font-family: monospace;
+            color: var(--primary-color);
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        
+        .time-alert {
+            color: var(--danger-color);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">GPS Tracker Dashboard</h1>
+        
         
         <div id="map" class="panel"></div>
         
@@ -151,6 +162,18 @@
                     <i class="fas fa-directions text-white"></i>
                     <span class="ml-2">Get Directions</span>
                 </button>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="flex justify-between items-center">
+                <div>
+                    <span class="label">Time Since Last Update:</span>
+                    <span class="countdown" id="lastUpdateTime">Calculating...</span>
+                </div>
+                <div>
+                    <span class="label">Next Update In:</span>
+                    <span class="countdown" id="nextUpdateTime">Calculating...</span>
+                </div>
             </div>
         </div>
 
@@ -367,11 +390,45 @@
                 alert('Waiting for GPS location data...');
             }
         }
+        let lastUpdateTimestamp = null;
+        const UPDATE_INTERVAL = 15 * 60 * 1000; // 15 minutes in milliseconds
+
+        function updateTimers() {
+            if (!lastUpdateTimestamp) return;
+            
+            const now = new Date();
+            const timeSinceUpdate = now - lastUpdateTimestamp;
+            const nextUpdate = UPDATE_INTERVAL - (timeSinceUpdate % UPDATE_INTERVAL);
+            
+            // Update "Time Since Last Update"
+            const lastUpdateElement = document.getElementById('lastUpdateTime');
+            const lastUpdateMinutes = Math.floor(timeSinceUpdate / 60000);
+            const lastUpdateSeconds = Math.floor((timeSinceUpdate % 60000) / 1000);
+            lastUpdateElement.textContent = `${lastUpdateMinutes}m ${lastUpdateSeconds}s`;
+            
+            // Update "Next Update In"
+            const nextUpdateElement = document.getElementById('nextUpdateTime');
+            const nextUpdateMinutes = Math.floor(nextUpdate / 60000);
+            const nextUpdateSeconds = Math.floor((nextUpdate % 60000) / 1000);
+            nextUpdateElement.textContent = `${nextUpdateMinutes}m ${nextUpdateSeconds}s`;
+            
+            // Add visual alert if update is late
+            if (timeSinceUpdate > UPDATE_INTERVAL) {
+                lastUpdateElement.classList.add('time-alert');
+                nextUpdateElement.classList.add('time-alert');
+            } else {
+                lastUpdateElement.classList.remove('time-alert');
+                nextUpdateElement.classList.remove('time-alert');
+            }
+        }
+
 
         // Listen for GPS data updates
         database.ref('/gps_data').on('value', async (snapshot) => {
             const data = snapshot.val();
             if (data) {
+                lastUpdateTimestamp = new Date(data.timestamp);
+                updateTimers();
                 try {
                     // Update current coordinates
                     currentLat = Number(data.lat).toFixed(8);
@@ -465,6 +522,7 @@
                 }
             }
         });
+        setInterval(updateTimers, 1000);
     </script>
     
     <script async defer
